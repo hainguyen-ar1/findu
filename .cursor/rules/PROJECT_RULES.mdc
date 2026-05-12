@@ -1,0 +1,94 @@
+# PROJECT_RULES.md
+
+**Tên dự án:** StrangerConfide  
+**Mô tả:** Ứng dụng "Tâm sự với người lạ" - Anonymous 1:1 Chat thời gian thực.
+
+### 1. Mục tiêu chính
+- Xây dựng một ứng dụng chat ẩn danh **an toàn**, ưu tiên trải nghiệm người dùng và chống lạm dụng.
+- Ưu tiên **Safety & Moderation** cao nhất trong mọi module.
+- Phase 1 tập trung hoàn thiện: **Authentication → Profile → Matchmaking → Chat Room**.
+
+### 2. Tech Stack
+**Backend:**
+- NestJS (TypeScript) + Modular Architecture (Domain Driven Design)
+- Database: MongoDB + Mongoose
+- Cache & Queue: Redis
+- Real-time: Socket.IO
+- Authentication: JWT + Passport (Local + Google + Facebook OAuth)
+- Security: Helmet, express-rate-limit, ValidationPipe, Class-validator
+
+**Frontend:**
+- Next.js 15 (App Router) + TypeScript
+- UI: TailwindCSS + shadcn/ui
+- Mobile-friendly, Dark mode mặc định
+
+### 3. Nguyên tắc cốt lõi (BẮT BUỘC tuân thủ mọi lúc)
+
+**An toàn & Anti-Abuse:**
+- Toàn bộ tin nhắn và hình ảnh phải qua moderation (lọc từ cấm, regex, anti-spam).
+- Rate limiting nghiêm ngặt cho API và Socket events.
+- Chống tạo nhiều tài khoản (basic device fingerprint + IP check).
+- Ngăn chặn lộ thông tin cá nhân trong chat (số điện thoại, link, username thật…).
+- Hỗ trợ Report + Block user ngay lập tức.
+- Tự động disconnect + cảnh báo khi phát hiện vi phạm.
+
+**Anonymous Rules:**
+- Khi vào chat, **luôn ẩn danh hoàn toàn**: chỉ hiển thị Nickname ngẫu nhiên (ví dụ: Stranger#7482) và Avatar tạm thời.
+- Không hiển thị bất kỳ thông tin profile thật nào trừ khi cả hai đều là VIP (giả lập sau).
+
+**Chat Policy:**
+- Không lưu trữ lịch sử chat lâu dài (xóa khi rời phòng).
+- Hỗ trợ text + gửi hình ảnh (có moderation).
+- Hiển thị typing indicator, "đang chờ", vị trí trong queue.
+- Xử lý disconnect/reconnect tốt (rejoin room trong 30 giây nếu có thể).
+
+### 4. Kiến trúc Backend (Modular)
+Phải tách rõ các module sau:
+- `auth`
+- `user`
+- `profile`
+- `matchmaking`
+- `room`
+- `chat`
+- `moderation`
+- `blocklist`
+- `gateway` (Socket.IO)
+- `common` (filters, guards, interceptors, exceptions)
+
+Mỗi module nên có: controller, service, repository, dto, entity, gateway (nếu cần).
+
+### 5. User Flow chính (Phase 1)
+1. Đăng ký / Đăng nhập (Email + Password, Google, Facebook) + Xác thực email.
+2. Tạo/Chỉnh sửa Profile (tuổi, giới tính, bio, avatar).
+3. Chọn preference → Nhấn “Tìm người tâm sự” → Vào Redis Queue.
+4. Ghép đôi thành công → Vào phòng chat ẩn danh.
+5. Chat real-time + gửi ảnh.
+6. Có nút Report, Block, Rời phòng.
+
+### 6. Matchmaking Rules
+- Dùng Redis Queue (FIFO).
+- Hỗ trợ: Giới tính đối phương (Nam/Nữ/Any), Preference (Opposite/Same/Any).
+- Hiển thị vị trí chờ thực tế.
+- Timeout sau 5 phút nếu không ghép được.
+- Không ghép với người đã block/blocked.
+
+### 7. VIP (Chỉ giả lập ở Phase 1)
+- Có model VIP.
+- VIP có thể xem profile thật của đối phương.
+- Thanh toán chỉ cần API mock.
+
+### 8. Những thứ làm sau (không implement Phase 1)
+- Voice Chat (WebRTC)
+- Thanh toán thật (Stripe/VNPay)
+- Matching nâng cao (sở thích, mood…)
+- Admin dashboard
+
+### 9. Coding Standards
+- Code sạch, có comment tiếng Việt hoặc tiếng Anh rõ ràng.
+- Sử dụng DTO, ValidationPipe, Exception filters.
+- Xử lý lỗi thân thiện với người dùng.
+- Tuân thủ NestJS best practices.
+
+**Khi implement bất kỳ tính năng nào, hãy luôn hỏi lại nếu không rõ hoặc ưu tiên Safety trước.**
+
+Bắt đầu implement theo phase: Auth → Profile → Matchmaking → Room & Chat.

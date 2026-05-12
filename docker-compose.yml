@@ -1,0 +1,74 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: strangerconfide_backend
+    restart: unless-stopped
+    ports:
+      - '${BACKEND_PORT:-3000}:3000'
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - MONGODB_URI=${MONGODB_URI}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN}
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    networks:
+      - strangerconfide_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: strangerconfide_frontend
+    restart: unless-stopped
+    ports:
+      - '${FRONTEND_PORT:-3001}:3001'
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      - NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL:-http://localhost:3000}
+    depends_on:
+      - backend
+    networks:
+      - strangerconfide_net
+
+  mongo:
+    image: mongo:7
+    container_name: strangerconfide_mongo
+    restart: unless-stopped
+    ports:
+      - '27017:27017'
+    environment:
+      - MONGO_INITDB_DATABASE=strangerconfide
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - strangerconfide_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: strangerconfide_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - strangerconfide_net
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  strangerconfide_net:
+    driver: bridge
