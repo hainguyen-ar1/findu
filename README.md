@@ -29,6 +29,7 @@ findu/
 | [docs/AUTH.md](docs/AUTH.md) | Đăng ký, OTP, OAuth, JWT, protected routes |
 | [docs/USER_PROFILE.md](docs/USER_PROFILE.md) | User & Profile CRUD, upload avatar |
 | [docs/MATCHMAKING.md](docs/MATCHMAKING.md) | Redis Queue, FIFO, WebSocket, race condition |
+| [docs/CHAT.md](docs/CHAT.md) | Room ẩn danh, chat realtime, moderation, report/block |
 | [.cursor/rules/PROJECT_RULES.mdc](.cursor/rules/PROJECT_RULES.mdc) | Quy tắc dự án (Cursor) |
 
 ## Khởi động nhanh
@@ -74,7 +75,7 @@ docker compose up -d
 | 2 | Authentication | ✅ |
 | 3 | User + Profile | ✅ |
 | 4 | Matchmaking (Redis) | ✅ |
-| 5 | Room & Chat | 🔜 |
+| 5 | Room & Chat | ✅ |
 
 ## URL dev
 

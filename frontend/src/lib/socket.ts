@@ -15,6 +15,8 @@ export function getChatSocket(): Socket {
       auth: { token: getToken() },
       autoConnect: false,
     });
+  } else {
+    chatSocket.auth = { token: getToken() };
   }
   return chatSocket;
 }

@@ -12,7 +12,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </Link>
         <blockquote className="space-y-2">
           <p className="text-lg italic text-muted-foreground">
-            "Đôi khi, một người lạ lắng nghe bạn tốt hơn bất kỳ ai quen biết."
+            &ldquo;Đôi khi, một người lạ lắng nghe bạn tốt hơn bất kỳ ai quen biết.&rdquo;
           </p>
         </blockquote>
       </div>

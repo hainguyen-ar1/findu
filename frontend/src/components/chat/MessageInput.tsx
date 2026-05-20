@@ -1,16 +1,19 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Send, ImageIcon } from 'lucide-react';
+import { Send, ImageIcon, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 interface Props {
-  onSend: (content: string, type?: 'text' | 'image') => void;
+  onSend: (content: string) => void;
+  onSendImage: (file: File) => Promise<void>;
+  onTyping: () => void;
 }
 
-export function MessageInput({ onSend }: Props) {
+export function MessageInput({ onSend, onSendImage, onTyping }: Props) {
   const [text, setText] = useState('');
+  const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
@@ -26,26 +29,53 @@ export function MessageInput({ onSend }: Props) {
     }
   };
 
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setUploading(true);
+    try {
+      await onSendImage(file);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
-    <div className="border-t p-4">
-      <div className="flex items-center gap-2">
+    <div className="safe-bottom shrink-0 border-t border-border/60 bg-card/80 p-3 backdrop-blur-md">
+      <div className="flex items-end gap-2">
         <Button
           type="button"
           variant="ghost"
           size="icon"
+          className="shrink-0"
           onClick={() => fileRef.current?.click()}
+          disabled={uploading}
           title="Gửi ảnh"
         >
-          <ImageIcon className="h-5 w-5" />
+          {uploading ? (
+            <Loader2 className="h-5 w-5 animate-spin" />
+          ) : (
+            <ImageIcon className="h-5 w-5" />
+          )}
         </Button>
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" />
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="hidden"
+          onChange={handleFile}
+        />
 
         <Input
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            onTyping();
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Nhập tin nhắn..."
-          className="flex-1 rounded-full"
+          className="min-h-[44px] flex-1 rounded-2xl border-border/60 bg-background"
           maxLength={1000}
         />
 
@@ -54,11 +84,14 @@ export function MessageInput({ onSend }: Props) {
           size="icon"
           onClick={handleSend}
           disabled={!text.trim()}
-          className="rounded-full"
+          className="h-11 w-11 shrink-0 rounded-full"
         >
           <Send className="h-4 w-4" />
         </Button>
       </div>
+      <p className="mt-1 text-center text-[10px] text-muted-foreground">
+        Ảnh và tin nhắn được kiểm duyệt tự động
+      </p>
     </div>
   );
 }

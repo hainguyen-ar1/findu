@@ -192,12 +192,16 @@ matchmaking:pending:{userId}   STRING Kết quả match chờ socket
         → ChatService.saveMessage()  ← lưu MongoDB tạm thời
         → server.to(roomId).emit("chat:message", {...})  ← broadcast cả phòng
 
-[Client] emit "room:leave" HOẶC disconnect đột ngột
-    → closeRoomCleanup():
-        → emit "chat:partner_left" cho người còn lại
+[Client] disconnect (mất mạng, đóng tab…) — KHÔNG đóng phòng
+    → room:presence { online: false }
+    → Phòng vẫn active, tin nhắn tạm giữ nguyên
+    → Vào lại room:join → khôi phục lịch sử + presence online
+
+[Client] emit "room:leave" (chủ động rời) HOẶC "room:block"
+    → closeRoom():
         → RoomService.closeRoom()  ← status = "closed"
         → ChatService.deleteRoomMessages()  ← XÓA TOÀN BỘ tin nhắn
-        → socket.leave(roomId)
+        → emit "room:closed"
 ```
 
 ---
@@ -571,7 +575,7 @@ Hoặc dùng **VS Code Run & Debug** (Cmd+Shift+D) → chọn **Full Stack: Back
 - [x] Auth: Register / Login / OAuth / OTP / Refresh Token
 - [x] User + Profile: CRUD, upload avatar
 - [x] Matchmaking: Redis Queue FIFO, blocklist, timeout 5 phút
-- [ ] Chat Room: Real-time + Moderation + Anonymous (Phase 5)
+- [x] Chat Room: Real-time + Moderation + Anonymous (Phase 5)
 
 ### Phase 2 🔜
 - [ ] Voice Chat (WebRTC)
