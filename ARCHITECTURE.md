@@ -141,36 +141,34 @@ accessToken hết hạn (7 ngày)
 
 ### 4.2 Matchmaking Flow
 
+> Chi tiết đầy đủ: [docs/MATCHMAKING.md](docs/MATCHMAKING.md)
+
 ```
-[Client] kết nối WebSocket tới /matchmaking
-    → MainGateway.handleConnection()
-        → verify JWT từ handshake.auth.token
-        → gắn socket.userId = payload.sub
+[Client] POST /api/matchmaking/join { preference, preferredGender? }
+    → Kiểm tra Profile (gender + age bắt buộc)
+    → Redis ZADD matchmaking:queue (score = joinedAt)  ← FIFO
+    → Redis SETEX matchmaking:entry:{userId}
 
-[Client] emit "queue:join" { preference: "any" }
-    → MatchmakingGateway.handleJoinQueue()
-        → MatchmakingService.joinQueue()
-            → Redis SETEX matchmaking:queue:{userId} 300s  ← TTL 5 phút
-            → Redis ZADD matchmaking:queue {timestamp} {userId}  ← sorted set FIFO
-        → emit "queue:joined" { position: N }
-        → tryMatch() chạy ngay:
-            → Redis ZRANGE lấy top 50 user chờ lâu nhất
-            → Lọc: bỏ qua nếu trong blocklist, kiểm tra gender preference
-            → Nếu tìm được match:
-                → leaveQueue(userId), leaveQueue(matchId)
-                → emit "match:found" { roomId } cho CẢ HAI socket
+[Client] WebSocket /matchmaking + emit queue:sync
+    → Cập nhật socketId thật
+    → Position loop mỗi 3s → emit queue:position
 
-[Client A & B] nhận "match:found" → điều hướng sang /chat/{roomId}
+tryAtomicMatch(userId):
+    → Lock userId + lock cặp (chống race)
+    → ZRANGE từ người chờ lâu nhất
+    → Lọc: block hai chiều, preference compatible
+    → claimPair → MULTI xóa cả hai khỏi queue
+    → RoomService.createRoom([A, B])
+    → emit match:found { roomId, partnerId }
+
+Disconnect / queue:leave / timeout 5 phút → cleanup Redis
 ```
 
-**Sơ đồ Redis data structure:**
+**Redis keys:**
 ```
-matchmaking:queue (Sorted Set)
-  score = timestamp  →  FIFO ordering
-  member = userId
-
-matchmaking:queue:{userId} (String, TTL 300s)
-  value = JSON { userId, socketId, preference, preferredGender, gender, joinedAt }
+matchmaking:queue              ZSET   FIFO (score = joinedAt)
+matchmaking:entry:{userId}     STRING TTL 5 phút
+matchmaking:pending:{userId}   STRING Kết quả match chờ socket
 ```
 
 ---
@@ -402,11 +400,34 @@ GET  /api/auth/facebook      → redirect Facebook OAuth
 GET  /api/auth/facebook/callback
 ```
 
+### User Endpoints
+
+> Chi tiết: [docs/USER_PROFILE.md](docs/USER_PROFILE.md)
+
+```
+GET   /api/users/me            (JWT) → tài khoản hiện tại
+PATCH /api/users/me            (JWT) { displayName?, avatar? }
+```
+
 ### Profile Endpoints
 
 ```
-GET  /api/profile            (JWT required) → profile của mình
-PUT  /api/profile            (JWT required) { gender, age, bio, chatPreference, ... }
+GET    /api/profile            (JWT) → user + profile + isComplete
+POST   /api/profile            (JWT) → tạo hồ sơ
+PUT    /api/profile            (JWT) → upsert toàn bộ
+PATCH  /api/profile            (JWT) → cập nhật một phần
+DELETE /api/profile            (JWT) → xóa hồ sơ
+POST   /api/profile/avatar     (JWT) multipart field "avatar"
+```
+
+### Matchmaking Endpoints
+
+> Chi tiết: [docs/MATCHMAKING.md](docs/MATCHMAKING.md)
+
+```
+POST   /api/matchmaking/join    (JWT) { preference, preferredGender? }
+DELETE /api/matchmaking/leave   (JWT)
+GET    /api/matchmaking/status  (JWT) → position, queueSize, expiresInSeconds
 ```
 
 ### Blocklist Endpoints
@@ -444,10 +465,13 @@ DELETE /api/blocklist/:targetUserId   (JWT required) → unblock
 
 | Direction | Event | Payload | Mô tả |
 |---|---|---|---|
-| Client → Server | `queue:join` | `{ preference, preferredGender? }` | Vào hàng đợi |
+| Client → Server | `queue:join` | `{ preference, preferredGender? }` | Vào hàng đợi (socket-only) |
+| Client → Server | `queue:sync` | — | Đồng bộ sau HTTP join |
 | Client → Server | `queue:leave` | — | Rời hàng đợi |
-| Server → Client | `queue:joined` | `{ position }` | Xác nhận vào queue |
-| Server → Client | `queue:left` | — | Xác nhận rời queue |
+| Server → Client | `queue:joined` | `QueueStatus` | Trạng thái ban đầu |
+| Server → Client | `queue:position` | `QueueStatus` | Cập nhật mỗi 3s |
+| Server → Client | `queue:timeout` | `{ message }` | Hết 5 phút |
+| Server → Client | `queue:left` | — | Đã rời queue |
 | Server → Client | `match:found` | `{ roomId, partnerId }` | Ghép đôi thành công |
 | Server → Client | `error` | `{ message }` | Lỗi |
 
@@ -541,12 +565,13 @@ Hoặc dùng **VS Code Run & Debug** (Cmd+Shift+D) → chọn **Full Stack: Back
 
 ## 12. Roadmap theo Phase
 
-### Phase 1 (hiện tại) ✅
+### Phase 1 (hiện tại)
+
 - [x] Cấu trúc dự án đầy đủ
-- [ ] Auth: Register / Login / OAuth / Email Verification
-- [ ] Profile: CRUD
-- [ ] Matchmaking: Redis Queue + ghép đôi
-- [ ] Chat Room: Real-time + Moderation + Anonymous
+- [x] Auth: Register / Login / OAuth / OTP / Refresh Token
+- [x] User + Profile: CRUD, upload avatar
+- [x] Matchmaking: Redis Queue FIFO, blocklist, timeout 5 phút
+- [ ] Chat Room: Real-time + Moderation + Anonymous (Phase 5)
 
 ### Phase 2 🔜
 - [ ] Voice Chat (WebRTC)
@@ -561,7 +586,18 @@ Hoặc dùng **VS Code Run & Debug** (Cmd+Shift+D) → chọn **Full Stack: Back
 
 ---
 
-## 13. Quy tắc đóng góp code
+## 13. Tài liệu theo module
+
+| Tài liệu | Nội dung |
+|----------|----------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Tổng quan kiến trúc (file này) |
+| [docs/AUTH.md](docs/AUTH.md) | Authentication, OTP, OAuth, JWT |
+| [docs/USER_PROFILE.md](docs/USER_PROFILE.md) | User & Profile API |
+| [docs/MATCHMAKING.md](docs/MATCHMAKING.md) | Redis Queue, ghép đôi, WebSocket |
+
+---
+
+## 14. Quy tắc đóng góp code
 
 1. **Mỗi domain = 1 module** — không để business logic của module A vào module B
 2. **Service không gọi thẳng Mongoose** — phải qua Repository

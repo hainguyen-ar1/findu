@@ -8,34 +8,78 @@
 | ---------- | ------------------------------------------------------- |
 | Backend    | NestJS · MongoDB · Redis · Socket.IO · JWT + OAuth2     |
 | Frontend   | Next.js 15 (App Router) · TypeScript · Tailwind · shadcn/ui |
-| Infra      | Docker Compose · GitHub Actions                         |
+| Infra      | Docker Compose                                          |
 
 ## Cấu trúc dự án
 
 ```
-strangerconfide/
-├── backend/          # NestJS API + Socket.IO
-├── frontend/         # Next.js 15 App Router
+findu/
+├── backend/              # NestJS API + Socket.IO
+├── frontend/             # Next.js 15 App Router
+├── docs/                 # Tài liệu theo module
+├── ARCHITECTURE.md       # Kiến trúc tổng quan
 └── docker-compose.yml
 ```
 
+## Tài liệu
+
+| File | Mô tả |
+|------|--------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Kiến trúc, flow, API tổng hợp, database schema |
+| [docs/AUTH.md](docs/AUTH.md) | Đăng ký, OTP, OAuth, JWT, protected routes |
+| [docs/USER_PROFILE.md](docs/USER_PROFILE.md) | User & Profile CRUD, upload avatar |
+| [docs/MATCHMAKING.md](docs/MATCHMAKING.md) | Redis Queue, FIFO, WebSocket, race condition |
+| [.cursor/rules/PROJECT_RULES.mdc](.cursor/rules/PROJECT_RULES.mdc) | Quy tắc dự án (Cursor) |
+
 ## Khởi động nhanh
 
+### Yêu cầu
+
+- Node.js ≥ 20
+- MongoDB (port 27017)
+- Redis (port 6379)
+
+### Dev mode
+
 ```bash
-# Copy env files
+# Copy env
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
 
-# Chạy toàn bộ stack
-docker compose up -d
+# Services
+brew services start mongodb-community
+brew services start redis
 
-# Hoặc chạy riêng lẻ (dev mode)
-cd backend && npm run start:dev
-cd frontend && npm run dev
+# Backend (port 3000)
+cd backend && npm install && npm run start:dev
+
+# Frontend (port 3001)
+cd frontend && npm install && npm run dev
 ```
 
-## Phases
+### Docker
 
-- **Phase 1** ✅ Authentication → Profile → Matchmaking → Chat Room
-- **Phase 2** 🔜 Voice Chat (WebRTC)
-- **Phase 3** 🔜 Thanh toán VIP thật
+```bash
+docker compose up -d
+```
+
+### VS Code Debug
+
+`Run & Debug` → **Full Stack: Backend + Frontend**
+
+## Tiến độ Phase 1
+
+| Phase | Module | Trạng thái |
+|-------|--------|------------|
+| 2 | Authentication | ✅ |
+| 3 | User + Profile | ✅ |
+| 4 | Matchmaking (Redis) | ✅ |
+| 5 | Room & Chat | 🔜 |
+
+## URL dev
+
+| Service | URL |
+|---------|-----|
+| Frontend | http://localhost:3001 |
+| Backend API | http://localhost:3000/api |
+| WebSocket | http://localhost:3000 |
