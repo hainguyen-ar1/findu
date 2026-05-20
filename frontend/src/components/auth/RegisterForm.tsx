@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -38,7 +39,11 @@ export function RegisterForm() {
   const onSubmit = async (data: FormData) => {
     try {
       await registerUser(data.email, data.password, data.displayName);
-      router.push('/profile');
+      toast({
+        title: 'Đăng ký thành công!',
+        description: 'Kiểm tra email để lấy mã OTP xác thực.',
+      });
+      router.push('/verify-email');
     } catch (err: any) {
       toast({
         variant: 'destructive',
@@ -59,14 +64,14 @@ export function RegisterForm() {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" type="email" placeholder="ban@example.com" {...register('email')} />
+        <Label htmlFor="reg-email">Email</Label>
+        <Input id="reg-email" type="email" placeholder="ban@example.com" {...register('email')} />
         {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="password">Mật khẩu</Label>
-        <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
+        <Label htmlFor="reg-password">Mật khẩu</Label>
+        <Input id="reg-password" type="password" placeholder="••••••••" {...register('password')} />
         {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
       </div>
 
@@ -86,6 +91,13 @@ export function RegisterForm() {
       <Button type="submit" className="w-full" disabled={isSubmitting}>
         {isSubmitting ? 'Đang tạo tài khoản...' : 'Tạo tài khoản'}
       </Button>
+
+      <p className="text-center text-sm text-muted-foreground">
+        Đã có tài khoản?{' '}
+        <Link href="/login" className="text-primary hover:underline">
+          Đăng nhập
+        </Link>
+      </p>
     </form>
   );
 }

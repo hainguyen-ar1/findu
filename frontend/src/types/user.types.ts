@@ -4,4 +4,5 @@ export interface User {
   displayName: string;
   avatar: string;
   role: 'user' | 'vip' | 'admin';
+  isEmailVerified: boolean;
 }
