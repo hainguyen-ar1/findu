@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
       { protocol: 'https', hostname: 'api.dicebear.com' },
       { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
       { protocol: 'https', hostname: 'graph.facebook.com' },
+      { protocol: 'http', hostname: 'localhost', port: '3000', pathname: '/uploads/**' },
     ],
   },
 };

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthStore } from '@/store/authStore';
 import { authApi } from '@/lib/auth-api';
+import { setAuthCookie } from '@/lib/auth-cookie';
 
 /**
  * Trang callback nhận tokens từ OAuth redirect.
@@ -26,6 +27,7 @@ export default function AuthCallbackPage() {
     // Lưu tokens
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
+    setAuthCookie(accessToken);
 
     // Lấy thông tin user
     authApi

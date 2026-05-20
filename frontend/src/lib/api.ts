@@ -1,4 +1,5 @@
 import axios, { AxiosError } from 'axios';
+import { setAuthCookie, clearAuthCookie } from './auth-cookie';
 
 export const apiClient = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
@@ -69,6 +70,7 @@ apiClient.interceptors.response.use(
 
         localStorage.setItem('accessToken', newTokens.accessToken);
         localStorage.setItem('refreshToken', newTokens.refreshToken);
+        setAuthCookie(newTokens.accessToken);
 
         processQueue(null, newTokens.accessToken);
         originalRequest.headers.Authorization = `Bearer ${newTokens.accessToken}`;
@@ -79,6 +81,7 @@ apiClient.interceptors.response.use(
         // Xóa token, user cần đăng nhập lại
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        clearAuthCookie();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {

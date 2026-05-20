@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { authApi } from '@/lib/auth-api';
+import { setAuthCookie, clearAuthCookie } from '@/lib/auth-cookie';
 import type { User } from '@/types/user.types';
 
 interface AuthState {
@@ -37,6 +38,7 @@ export const useAuthStore = create<AuthState>()(
         const res = await authApi.login({ email, password });
         localStorage.setItem('accessToken', res.accessToken);
         localStorage.setItem('refreshToken', res.refreshToken);
+        setAuthCookie(res.accessToken);
         set({ user: res.user as User, accessToken: res.accessToken, refreshToken: res.refreshToken });
       },
 
@@ -44,6 +46,7 @@ export const useAuthStore = create<AuthState>()(
         const res = await authApi.verifyEmail({ email, otp });
         localStorage.setItem('accessToken', res.accessToken);
         localStorage.setItem('refreshToken', res.refreshToken);
+        setAuthCookie(res.accessToken);
         set({
           user: res.user as User,
           accessToken: res.accessToken,
@@ -59,6 +62,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        clearAuthCookie();
         set({ user: null, accessToken: null, refreshToken: null, pendingEmail: null });
       },
 

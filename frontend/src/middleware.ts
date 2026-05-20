@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /** Routes không cần xác thực */
-const PUBLIC_ROUTES = ['/login', '/register', '/verify-email', '/auth/callback'];
+const PUBLIC_ROUTES = ['/', '/login', '/register', '/verify-email', '/auth/callback'];
 
 /** Routes chỉ dành cho guest (chưa đăng nhập) */
 const GUEST_ONLY_ROUTES = ['/login', '/register', '/verify-email'];

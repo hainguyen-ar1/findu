@@ -42,5 +42,8 @@ coverage/
 # Docker
 .docker/
 
+# Uploads
+uploads/
+
 # Misc
 *.tsbuildinfo
