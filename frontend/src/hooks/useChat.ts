@@ -1,58 +1,194 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { getChatSocket } from '@/lib/socket';
 import { useChatStore } from '@/store/chatStore';
-import type { ChatMessage } from '@/types/chat.types';
+import { chatApi } from '@/lib/chat-api';
+import { setRoomCookie, clearRoomCookie } from '@/lib/room-cookie';
+import type { ChatMessage, RoomSession } from '@/types/chat.types';
 
 export function useChat(roomId: string) {
-  const { messages, myAlias, partnerAlias, isPartnerTyping, addMessage, setAliases, setPartnerTyping, clearChat } =
-    useChatStore();
+  const {
+    messages,
+    session,
+    partnerUserId,
+    isPartnerTyping,
+    partnerOnline,
+    error,
+    setSession,
+    setMessages,
+    addMessage,
+    setPartnerTyping,
+    setPartnerOnline,
+    setError,
+    clearChat,
+  } = useChatStore();
+
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isTypingRef = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     const socket = getChatSocket();
-    socket.connect();
+    const token = localStorage.getItem('accessToken') || '';
+    socket.auth = { token };
 
-    socket.emit('room:join', { roomId });
+    const connectAndJoin = () => {
+      socket.emit('room:join', { roomId });
+    };
 
-    socket.on('room:joined', ({ alias }: { alias: string }) => {
-      setAliases(alias);
-    });
+    const onRoomJoined = (data: { session: RoomSession; partnerUserId: string | null; messages: ChatMessage[] }) => {
+      setSession(data.session, data.partnerUserId);
+      setMessages(data.messages);
+      setError(null);
+      // Lưu roomId vào cookie để middleware có thể redirect user về phòng cũ.
+      setRoomCookie(roomId);
+    };
 
-    socket.on('chat:message', (msg: ChatMessage) => {
+    const onMessage = (msg: ChatMessage) => {
       addMessage(msg);
-    });
+    };
 
-    socket.on('chat:typing', ({ isTyping }: { isTyping: boolean }) => {
+    const onTypingEvent = ({ isTyping }: { isTyping: boolean }) => {
       setPartnerTyping(isTyping);
-    });
+    };
 
-    socket.on('chat:partner_left', () => {
-      addMessage({ senderAlias: 'System', type: 'system', content: 'Đối phương đã rời phòng.' });
-    });
+    const onPresence = ({ online }: { userId: string; online: boolean }) => {
+      setPartnerOnline(online);
+    };
+
+    const onRoomClosed = () => {
+      // Xóa cookie phòng khi phòng bị đóng từ phía server.
+      clearRoomCookie();
+      addMessage({
+        senderAlias: 'System',
+        type: 'system',
+        content: 'Phòng đã đóng. Tin nhắn không được lưu.',
+      });
+    };
+
+    const onSocketError = (data: { message?: string }) => {
+      setError(data?.message || 'Có lỗi xảy ra');
+    };
+
+    /**
+     * Server tu choi quyen vao phong:
+     * - Neu user dang co phong khac (doc tu cookie) -> redirect ve phong do.
+     * - Neu khong co phong nao -> ve trang chu.
+     */
+    const onAccessDenied = () => {
+      socket.disconnect();
+      // Xóa cookie stale để tránh middleware redirect vòng lặp vào phòng chết.
+      clearRoomCookie();
+      router.replace('/');
+    };
+
+    // Đăng ký listeners TRƯỚC khi connect/join để tránh miss event do race.
+    socket.on('connect', connectAndJoin);
+    socket.on('room:joined', onRoomJoined);
+    socket.on('room:access_denied', onAccessDenied);
+    socket.on('chat:message', onMessage);
+    socket.on('chat:typing', onTypingEvent);
+    socket.on('room:presence', onPresence);
+    socket.on('room:closed', onRoomClosed);
+    socket.on('error', onSocketError);
+
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      connectAndJoin();
+    }
 
     return () => {
-      socket.off('room:joined');
-      socket.off('chat:message');
-      socket.off('chat:typing');
-      socket.off('chat:partner_left');
+      socket.off('connect', connectAndJoin);
+      socket.off('room:joined', onRoomJoined);
+      socket.off('room:access_denied', onAccessDenied);
+      socket.off('chat:message', onMessage);
+      socket.off('chat:typing', onTypingEvent);
+      socket.off('room:presence', onPresence);
+      socket.off('room:closed', onRoomClosed);
+      socket.off('error', onSocketError);
     };
-  }, [roomId]);
+  }, [roomId, router, setSession, setMessages, addMessage, setPartnerTyping, setPartnerOnline, setError]);
 
-  const sendMessage = useCallback(
-    (content: string, type: 'text' | 'image' = 'text') => {
+  const emitTyping = useCallback(
+    (isTyping: boolean) => {
       const socket = getChatSocket();
-      socket.emit('chat:send', { roomId, type, content });
+      socket.emit('chat:typing', { roomId, isTyping });
     },
     [roomId],
+  );
+
+  const onTyping = useCallback(() => {
+    if (!isTypingRef.current) {
+      isTypingRef.current = true;
+      emitTyping(true);
+    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      isTypingRef.current = false;
+      emitTyping(false);
+    }, 2000);
+  }, [emitTyping]);
+
+  const sendMessage = useCallback(
+    (content: string) => {
+      const socket = getChatSocket();
+      socket.emit('chat:send', { roomId, type: 'text', content });
+      emitTyping(false);
+      isTypingRef.current = false;
+    },
+    [roomId, emitTyping],
+  );
+
+  const sendImage = useCallback(
+    async (file: File) => {
+      setError(null);
+      try {
+        await chatApi.uploadImage(roomId, file);
+        // Tin ảnh được broadcast qua socket `chat:message`
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Không gửi được ảnh');
+      }
+    },
+    [roomId, setError],
   );
 
   const leaveRoom = useCallback(() => {
     const socket = getChatSocket();
     socket.emit('room:leave', { roomId });
     socket.disconnect();
+    // Xóa cookie phòng khi user chủ động rời phòng.
+    clearRoomCookie();
     clearChat();
-  }, [roomId]);
+  }, [roomId, clearChat]);
 
-  return { messages, isPartnerTyping, myAlias, partnerAlias, sendMessage, leaveRoom };
+  const blockPartner = useCallback(() => {
+    if (!partnerUserId) return;
+    const socket = getChatSocket();
+    socket.emit('room:block', { roomId, targetUserId: partnerUserId });
+    // Xóa cookie phòng để user có thể tìm người tâm sự mới sau khi block.
+    clearRoomCookie();
+    clearChat();
+  }, [roomId, partnerUserId, clearChat]);
+
+  return {
+    messages,
+    session,
+    partnerUserId,
+    isPartnerTyping,
+    partnerOnline,
+    error,
+    myAlias: session?.myAlias ?? null,
+    partnerAlias: session?.partnerAlias ?? null,
+    myAvatar: session?.myAvatar ?? null,
+    partnerAvatar: session?.partnerAvatar ?? null,
+    sendMessage,
+    sendImage,
+    leaveRoom,
+    blockPartner,
+    onTyping,
+    setError,
+  };
 }

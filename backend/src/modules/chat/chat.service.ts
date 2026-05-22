@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import { Message, MessageDocument } from './entities/message.schema';
+import { Message, MessageDocument, MessageType } from './entities/message.schema';
 import { SendMessageDto } from './dto/send-message.dto';
 import { ModerationService } from '../moderation/moderation.service';
+import { ChatMessageDto, toChatMessagePayload } from './dto/chat-response.dto';
 
 @Injectable()
 export class ChatService {
@@ -16,12 +17,20 @@ export class ChatService {
     senderId: string,
     senderAlias: string,
     dto: SendMessageDto,
+    imageMimetype?: string,
   ): Promise<MessageDocument> {
-    // Kiểm duyệt nội dung trước khi lưu
-    if (dto.content) {
-      const result = await this.moderationService.checkText(dto.content);
+    if (dto.type === MessageType.TEXT && dto.content) {
+      const result = this.moderationService.moderateMessage(senderId, dto.roomId, dto.content);
       if (result.isViolation) {
-        throw new Error(`Tin nhắn vi phạm: ${result.reason}`);
+        throw new BadRequestException(result.reason);
+      }
+    }
+
+    if (dto.type === MessageType.IMAGE && dto.imageUrl) {
+      const mime = imageMimetype || 'image/jpeg';
+      const result = await this.moderationService.checkImage(dto.imageUrl, mime);
+      if (result.isViolation) {
+        throw new BadRequestException(result.reason);
       }
     }
 
@@ -32,19 +41,28 @@ export class ChatService {
       type: dto.type,
       content: dto.content || '',
       imageUrl: dto.imageUrl || '',
+      isModerated: true,
     });
   }
 
-  async getMessages(roomId: string): Promise<MessageDocument[]> {
+  /** Tin nhắn tạm trong phòng (xóa khi đóng phòng) — dùng khi reconnect */
+  async getActiveRoomMessages(roomId: string): Promise<MessageDocument[]> {
     return this.messageModel
-      .find({ roomId })
+      .find({ roomId, type: { $ne: MessageType.SYSTEM } })
       .sort({ createdAt: 1 })
       .limit(100)
       .exec();
   }
 
-  /** Xóa toàn bộ tin nhắn khi phòng đóng (không lưu lịch sử) */
   async deleteRoomMessages(roomId: string): Promise<void> {
     await this.messageModel.deleteMany({ roomId }).exec();
+  }
+
+  toMessagePayload(
+    message: MessageDocument,
+    senderAlias: string,
+    imageUrlOverride?: string,
+  ): ChatMessageDto {
+    return toChatMessagePayload(message, senderAlias, imageUrlOverride);
   }
 }

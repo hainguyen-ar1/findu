@@ -15,6 +15,8 @@ export function getChatSocket(): Socket {
       auth: { token: getToken() },
       autoConnect: false,
     });
+  } else {
+    chatSocket.auth = { token: getToken() };
   }
   return chatSocket;
 }
@@ -25,13 +27,19 @@ export function getMatchmakingSocket(): Socket {
       auth: { token: getToken() },
       autoConnect: false,
     });
+  } else {
+    matchmakingSocket.auth = { token: getToken() };
   }
   return matchmakingSocket;
 }
 
+export function disconnectMatchmakingSocket() {
+  matchmakingSocket?.disconnect();
+  matchmakingSocket = null;
+}
+
 export function disconnectAll() {
   chatSocket?.disconnect();
-  matchmakingSocket?.disconnect();
+  disconnectMatchmakingSocket();
   chatSocket = null;
-  matchmakingSocket = null;
 }

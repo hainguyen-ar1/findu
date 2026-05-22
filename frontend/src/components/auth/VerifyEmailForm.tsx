@@ -149,6 +149,12 @@ export function VerifyEmailForm({ email }: VerifyEmailFormProps) {
         {isSubmitting ? 'Đang xác thực...' : 'Xác thực'}
       </Button>
 
+      {process.env.NODE_ENV === 'development' && (
+        <p className="text-center text-xs text-muted-foreground">
+          Dev: nhập <span className="font-mono font-semibold">000000</span> để bỏ qua OTP
+        </p>
+      )}
+
       {/* Resend */}
       <div className="text-center text-sm text-muted-foreground">
         Không nhận được mã?{' '}

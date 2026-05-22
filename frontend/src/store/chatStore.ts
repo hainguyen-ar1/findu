@@ -1,30 +1,58 @@
 import { create } from 'zustand';
-import type { ChatMessage } from '@/types/chat.types';
+import type { ChatMessage, RoomSession } from '@/types/chat.types';
 
 interface ChatState {
   messages: ChatMessage[];
-  myAlias: string | null;
-  partnerAlias: string | null;
+  session: RoomSession | null;
+  partnerUserId: string | null;
   isPartnerTyping: boolean;
+  partnerOnline: boolean;
+  error: string | null;
+  setSession: (session: RoomSession, partnerUserId: string | null) => void;
+  setMessages: (messages: ChatMessage[]) => void;
   addMessage: (msg: ChatMessage) => void;
-  setAliases: (my: string, partner?: string) => void;
   setPartnerTyping: (typing: boolean) => void;
+  setPartnerOnline: (online: boolean) => void;
+  setError: (error: string | null) => void;
   clearChat: () => void;
 }
 
 export const useChatStore = create<ChatState>((set) => ({
   messages: [],
-  myAlias: null,
-  partnerAlias: null,
+  session: null,
+  partnerUserId: null,
   isPartnerTyping: false,
+  partnerOnline: false,
+  error: null,
 
-  addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
+  setSession: (session, partnerUserId) =>
+    set({ session, partnerUserId, partnerOnline: session.partnerOnline }),
 
-  setAliases: (my, partner) =>
-    set({ myAlias: my, partnerAlias: partner ?? null }),
+  setMessages: (messages) => set({ messages }),
+
+  addMessage: (msg) =>
+    set((state) => {
+      if (msg.id && state.messages.some((m) => m.id === msg.id)) return state;
+      return { messages: [...state.messages, msg] };
+    }),
 
   setPartnerTyping: (typing) => set({ isPartnerTyping: typing }),
 
+  setPartnerOnline: (online) =>
+    set((state) => ({
+      partnerOnline: online,
+      session: state.session ? { ...state.session, partnerOnline: online } : null,
+    })),
+
+  setError: (error) => set({ error }),
+
   clearChat: () =>
-    set({ messages: [], myAlias: null, partnerAlias: null, isPartnerTyping: false }),
+    set({
+      messages: [],
+      session: null,
+      partnerUserId: null,
+      isPartnerTyping: false,
+      partnerOnline: false,
+      error: null,
+    }),
 }));

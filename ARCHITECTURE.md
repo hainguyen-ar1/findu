@@ -141,36 +141,34 @@ accessToken hết hạn (7 ngày)
 
 ### 4.2 Matchmaking Flow
 
+> Chi tiết đầy đủ: [docs/MATCHMAKING.md](docs/MATCHMAKING.md)
+
 ```
-[Client] kết nối WebSocket tới /matchmaking
-    → MainGateway.handleConnection()
-        → verify JWT từ handshake.auth.token
-        → gắn socket.userId = payload.sub
+[Client] POST /api/matchmaking/join { preference, preferredGender? }
+    → Kiểm tra Profile (gender + age bắt buộc)
+    → Redis ZADD matchmaking:queue (score = joinedAt)  ← FIFO
+    → Redis SETEX matchmaking:entry:{userId}
 
-[Client] emit "queue:join" { preference: "any" }
-    → MatchmakingGateway.handleJoinQueue()
-        → MatchmakingService.joinQueue()
-            → Redis SETEX matchmaking:queue:{userId} 300s  ← TTL 5 phút
-            → Redis ZADD matchmaking:queue {timestamp} {userId}  ← sorted set FIFO
-        → emit "queue:joined" { position: N }
-        → tryMatch() chạy ngay:
-            → Redis ZRANGE lấy top 50 user chờ lâu nhất
-            → Lọc: bỏ qua nếu trong blocklist, kiểm tra gender preference
-            → Nếu tìm được match:
-                → leaveQueue(userId), leaveQueue(matchId)
-                → emit "match:found" { roomId } cho CẢ HAI socket
+[Client] WebSocket /matchmaking + emit queue:sync
+    → Cập nhật socketId thật
+    → Position loop mỗi 3s → emit queue:position
 
-[Client A & B] nhận "match:found" → điều hướng sang /chat/{roomId}
+tryAtomicMatch(userId):
+    → Lock userId + lock cặp (chống race)
+    → ZRANGE từ người chờ lâu nhất
+    → Lọc: block hai chiều, preference compatible
+    → claimPair → MULTI xóa cả hai khỏi queue
+    → RoomService.createRoom([A, B])
+    → emit match:found { roomId, partnerId }
+
+Disconnect / queue:leave / timeout 5 phút → cleanup Redis
 ```
 
-**Sơ đồ Redis data structure:**
+**Redis keys:**
 ```
-matchmaking:queue (Sorted Set)
-  score = timestamp  →  FIFO ordering
-  member = userId
-
-matchmaking:queue:{userId} (String, TTL 300s)
-  value = JSON { userId, socketId, preference, preferredGender, gender, joinedAt }
+matchmaking:queue              ZSET   FIFO (score = joinedAt)
+matchmaking:entry:{userId}     STRING TTL 5 phút
+matchmaking:pending:{userId}   STRING Kết quả match chờ socket
 ```
 
 ---
@@ -194,17 +192,80 @@ matchmaking:queue:{userId} (String, TTL 300s)
         → ChatService.saveMessage()  ← lưu MongoDB tạm thời
         → server.to(roomId).emit("chat:message", {...})  ← broadcast cả phòng
 
-[Client] emit "room:leave" HOẶC disconnect đột ngột
-    → closeRoomCleanup():
-        → emit "chat:partner_left" cho người còn lại
+[Client] disconnect (mất mạng, đóng tab…) — KHÔNG đóng phòng
+    → room:presence { online: false }
+    → Phòng vẫn active, tin nhắn tạm giữ nguyên
+    → Vào lại room:join → khôi phục lịch sử + presence online
+
+[Client] emit "room:leave" (chủ động rời) HOẶC "room:block"
+    → closeRoom():
         → RoomService.closeRoom()  ← status = "closed"
         → ChatService.deleteRoomMessages()  ← XÓA TOÀN BỘ tin nhắn
-        → socket.leave(roomId)
+        → emit "room:closed"
 ```
 
 ---
 
-### 4.4 Moderation Pipeline
+### 4.4 Room Access Control (Single Session)
+
+> Mỗi user tại một thời điểm chỉ được ở trong **một phòng chat duy nhất**.
+> Không ai có thể vào phòng người khác bằng cách nhập trực tiếp URL.
+
+**Cơ chế:** Cookie `active-room-id` lưu `roomId` hiện tại, đọc được từ cả client (JavaScript) lẫn server (Next.js middleware).
+
+```
+lib/room-cookie.ts
+  ├── setRoomCookie(roomId)   ← ghi khi room:joined thành công
+  └── clearRoomCookie()       ← xóa khi leave / block / room:closed / access_denied
+```
+
+**3 lớp bảo vệ:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Lớp 1: Next.js Middleware (SSR — nhanh nhất, chặn trước khi   │
+│         trang load)                                            │
+│                                                                │
+│  Có cookie + vào / hoặc /matchmaking    → redirect /chat/{id}  │
+│  Có cookie A + vào /chat/B (A ≠ B)      → redirect /chat/A     │
+│  Không cookie + vào /chat/X             → cho qua (lớp 2 xử lý)│
+├─────────────────────────────────────────────────────────────────┤
+│ Lớp 2: Backend WebSocket (chat.gateway.ts)                     │
+│                                                                │
+│  room:join → isParticipant(userId) = false                     │
+│           → emit room:access_denied                            │
+│  room:join → getRoom() throws (phòng đã đóng/không tồn tại)   │
+│           → emit room:access_denied                            │
+├─────────────────────────────────────────────────────────────────┤
+│ Lớp 3: Frontend useChat.ts (client-side recovery)              │
+│                                                                │
+│  Nhận room:access_denied → clearRoomCookie() → redirect /      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Xử lý stale cookie** (phòng đóng khi user offline):
+```
+User mở lại trình duyệt, cookie active-room-id = 'deadRoom'
+  → Middleware redirect → /chat/deadRoom
+  → useChat: room:join → Backend: phòng đã đóng → room:access_denied
+  → Frontend: clearRoomCookie() + router.replace('/')  ← phá vòng lặp
+  → User vào / bình thường
+```
+
+**Cookie lifecycle:**
+
+| Sự kiện | Hành động |
+|---|---|
+| `room:joined` thành công | `setRoomCookie(roomId)` |
+| User gọi `leaveRoom()` | `clearRoomCookie()` |
+| User gọi `blockPartner()` | `clearRoomCookie()` |
+| Server emit `room:closed` | `clearRoomCookie()` |
+| Server emit `room:access_denied` | `clearRoomCookie()` |
+| Cookie tự hết hạn | Sau 24 giờ (max-age) |
+
+---
+
+### 4.5 Moderation Pipeline
 
 Mỗi tin nhắn text phải qua:
 
@@ -248,11 +309,12 @@ src/
 │   └── common/               ← Navbar, ThemeProvider, LoadingSpinner
 ├── hooks/
 │   ├── useAuth.ts            ← Wrapper đọc authStore
-│   ├── useChat.ts            ← Socket events cho /chat namespace
+│   ├── useChat.ts            ← Socket events + room access guard (room:access_denied)
 │   ├── useMatchmaking.ts     ← Socket events cho /matchmaking namespace
 │   └── use-toast.ts          ← Toast state management
 ├── lib/
 │   ├── api.ts                ← Axios instance: auto-attach JWT, chuẩn hoá lỗi
+│   ├── room-cookie.ts        ← Set/clear cookie active-room-id cho middleware
 │   ├── socket.ts             ← Socket.IO factory (singleton per namespace)
 │   └── utils.ts              ← cn() helper (clsx + tailwind-merge)
 ├── store/
@@ -402,11 +464,34 @@ GET  /api/auth/facebook      → redirect Facebook OAuth
 GET  /api/auth/facebook/callback
 ```
 
+### User Endpoints
+
+> Chi tiết: [docs/USER_PROFILE.md](docs/USER_PROFILE.md)
+
+```
+GET   /api/users/me            (JWT) → tài khoản hiện tại
+PATCH /api/users/me            (JWT) { displayName?, avatar? }
+```
+
 ### Profile Endpoints
 
 ```
-GET  /api/profile            (JWT required) → profile của mình
-PUT  /api/profile            (JWT required) { gender, age, bio, chatPreference, ... }
+GET    /api/profile            (JWT) → user + profile + isComplete
+POST   /api/profile            (JWT) → tạo hồ sơ
+PUT    /api/profile            (JWT) → upsert toàn bộ
+PATCH  /api/profile            (JWT) → cập nhật một phần
+DELETE /api/profile            (JWT) → xóa hồ sơ
+POST   /api/profile/avatar     (JWT) multipart field "avatar"
+```
+
+### Matchmaking Endpoints
+
+> Chi tiết: [docs/MATCHMAKING.md](docs/MATCHMAKING.md)
+
+```
+POST   /api/matchmaking/join    (JWT) { preference, preferredGender? }
+DELETE /api/matchmaking/leave   (JWT)
+GET    /api/matchmaking/status  (JWT) → position, queueSize, expiresInSeconds
 ```
 
 ### Blocklist Endpoints
@@ -444,10 +529,13 @@ DELETE /api/blocklist/:targetUserId   (JWT required) → unblock
 
 | Direction | Event | Payload | Mô tả |
 |---|---|---|---|
-| Client → Server | `queue:join` | `{ preference, preferredGender? }` | Vào hàng đợi |
+| Client → Server | `queue:join` | `{ preference, preferredGender? }` | Vào hàng đợi (socket-only) |
+| Client → Server | `queue:sync` | — | Đồng bộ sau HTTP join |
 | Client → Server | `queue:leave` | — | Rời hàng đợi |
-| Server → Client | `queue:joined` | `{ position }` | Xác nhận vào queue |
-| Server → Client | `queue:left` | — | Xác nhận rời queue |
+| Server → Client | `queue:joined` | `QueueStatus` | Trạng thái ban đầu |
+| Server → Client | `queue:position` | `QueueStatus` | Cập nhật mỗi 3s |
+| Server → Client | `queue:timeout` | `{ message }` | Hết 5 phút |
+| Server → Client | `queue:left` | — | Đã rời queue |
 | Server → Client | `match:found` | `{ roomId, partnerId }` | Ghép đôi thành công |
 | Server → Client | `error` | `{ message }` | Lỗi |
 
@@ -459,11 +547,14 @@ DELETE /api/blocklist/:targetUserId   (JWT required) → unblock
 | Client → Server | `chat:send` | `{ roomId, type, content?, imageUrl? }` | Gửi tin nhắn |
 | Client → Server | `chat:typing` | `{ roomId, isTyping }` | Typing indicator |
 | Client → Server | `room:leave` | `{ roomId }` | Rời phòng chủ động |
-| Server → Client | `room:joined` | `{ roomId, alias }` | Xác nhận + nhận nickname |
+| Client → Server | `room:block` | `{ roomId, targetUserId }` | Block + đóng phòng |
+| Server → Client | `room:joined` | `{ session, partnerUserId, messages }` | Xác nhận + nhận session + lịch sử |
+| Server → Client | `room:access_denied` | `{ roomId, message }` | Không có quyền vào phòng hoặc phòng đã đóng |
+| Server → Client | `room:closed` | `{ roomId }` | Phòng đã đóng (partner rời/block) |
+| Server → Client | `room:presence` | `{ userId, online }` | Trạng thái online của partner |
 | Server → Client | `chat:message` | `{ id, senderAlias, type, content, imageUrl, createdAt }` | Tin nhắn mới |
-| Server → Client | `chat:typing` | `{ userId, isTyping }` | Partner đang gõ |
-| Server → Client | `chat:partner_left` | — | Đối phương rời phòng |
-| Server → Client | `error` | `{ message }` | Lỗi |
+| Server → Client | `chat:typing` | `{ isTyping }` | Partner đang gõ |
+| Server → Client | `error` | `{ message }` | Lỗi generic |
 
 **Kết nối Socket cần JWT:**
 ```javascript
@@ -541,12 +632,13 @@ Hoặc dùng **VS Code Run & Debug** (Cmd+Shift+D) → chọn **Full Stack: Back
 
 ## 12. Roadmap theo Phase
 
-### Phase 1 (hiện tại) ✅
+### Phase 1 (hiện tại)
+
 - [x] Cấu trúc dự án đầy đủ
-- [ ] Auth: Register / Login / OAuth / Email Verification
-- [ ] Profile: CRUD
-- [ ] Matchmaking: Redis Queue + ghép đôi
-- [ ] Chat Room: Real-time + Moderation + Anonymous
+- [x] Auth: Register / Login / OAuth / OTP / Refresh Token
+- [x] User + Profile: CRUD, upload avatar
+- [x] Matchmaking: Redis Queue FIFO, blocklist, timeout 5 phút
+- [x] Chat Room: Real-time + Moderation + Anonymous (Phase 5)
 
 ### Phase 2 🔜
 - [ ] Voice Chat (WebRTC)
@@ -561,7 +653,18 @@ Hoặc dùng **VS Code Run & Debug** (Cmd+Shift+D) → chọn **Full Stack: Back
 
 ---
 
-## 13. Quy tắc đóng góp code
+## 13. Tài liệu theo module
+
+| Tài liệu | Nội dung |
+|----------|----------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Tổng quan kiến trúc (file này) |
+| [docs/AUTH.md](docs/AUTH.md) | Authentication, OTP, OAuth, JWT |
+| [docs/USER_PROFILE.md](docs/USER_PROFILE.md) | User & Profile API |
+| [docs/MATCHMAKING.md](docs/MATCHMAKING.md) | Redis Queue, ghép đôi, WebSocket |
+
+---
+
+## 14. Quy tắc đóng góp code
 
 1. **Mỗi domain = 1 module** — không để business logic của module A vào module B
 2. **Service không gọi thẳng Mongoose** — phải qua Repository
