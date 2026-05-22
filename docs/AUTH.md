@@ -75,7 +75,13 @@ Login (chưa verify) → gửi lại OTP + lỗi 400
 
 ---
 
-## 5. Biến môi trường
+## 5. Swagger
+
+- UI: `http://localhost:3000/api/docs`
+- Response mẫu (Example Value) mô tả envelope `{ success, data, timestamp }` và object `data` đầy đủ field + kiểu.
+- API protected: bấm **Authorize**, dán `accessToken` (không thêm chữ `Bearer`).
+
+## 6. Biến môi trường
 
 ```bash
 JWT_SECRET=...
