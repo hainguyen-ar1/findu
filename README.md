@@ -83,4 +83,6 @@ docker compose up -d
 |---------|-----|
 | Frontend | http://localhost:3001 |
 | Backend API | http://localhost:3000/api |
+| Swagger UI | http://localhost:3000/api/docs |
+| OpenAPI JSON | http://localhost:3000/api/docs-json |
 | WebSocket | http://localhost:3000 |
