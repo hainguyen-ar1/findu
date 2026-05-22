@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { getChatSocket } from '@/lib/socket';
 import { useChatStore } from '@/store/chatStore';
 import { chatApi } from '@/lib/chat-api';
+import { setRoomCookie, clearRoomCookie } from '@/lib/room-cookie';
 import type { ChatMessage, RoomSession } from '@/types/chat.types';
 
 export function useChat(roomId: string) {
@@ -25,6 +27,7 @@ export function useChat(roomId: string) {
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
+  const router = useRouter();
 
   useEffect(() => {
     const socket = getChatSocket();
@@ -39,6 +42,8 @@ export function useChat(roomId: string) {
       setSession(data.session, data.partnerUserId);
       setMessages(data.messages);
       setError(null);
+      // Lưu roomId vào cookie để middleware có thể redirect user về phòng cũ.
+      setRoomCookie(roomId);
     };
 
     const onMessage = (msg: ChatMessage) => {
@@ -54,6 +59,8 @@ export function useChat(roomId: string) {
     };
 
     const onRoomClosed = () => {
+      // Xóa cookie phòng khi phòng bị đóng từ phía server.
+      clearRoomCookie();
       addMessage({
         senderAlias: 'System',
         type: 'system',
@@ -65,9 +72,22 @@ export function useChat(roomId: string) {
       setError(data?.message || 'Có lỗi xảy ra');
     };
 
+    /**
+     * Server tu choi quyen vao phong:
+     * - Neu user dang co phong khac (doc tu cookie) -> redirect ve phong do.
+     * - Neu khong co phong nao -> ve trang chu.
+     */
+    const onAccessDenied = () => {
+      socket.disconnect();
+      // Xóa cookie stale để tránh middleware redirect vòng lặp vào phòng chết.
+      clearRoomCookie();
+      router.replace('/');
+    };
+
     // Đăng ký listeners TRƯỚC khi connect/join để tránh miss event do race.
     socket.on('connect', connectAndJoin);
     socket.on('room:joined', onRoomJoined);
+    socket.on('room:access_denied', onAccessDenied);
     socket.on('chat:message', onMessage);
     socket.on('chat:typing', onTypingEvent);
     socket.on('room:presence', onPresence);
@@ -83,13 +103,14 @@ export function useChat(roomId: string) {
     return () => {
       socket.off('connect', connectAndJoin);
       socket.off('room:joined', onRoomJoined);
+      socket.off('room:access_denied', onAccessDenied);
       socket.off('chat:message', onMessage);
       socket.off('chat:typing', onTypingEvent);
       socket.off('room:presence', onPresence);
       socket.off('room:closed', onRoomClosed);
       socket.off('error', onSocketError);
     };
-  }, [roomId, setSession, setMessages, addMessage, setPartnerTyping, setPartnerOnline, setError]);
+  }, [roomId, router, setSession, setMessages, addMessage, setPartnerTyping, setPartnerOnline, setError]);
 
   const emitTyping = useCallback(
     (isTyping: boolean) => {
@@ -138,6 +159,8 @@ export function useChat(roomId: string) {
     const socket = getChatSocket();
     socket.emit('room:leave', { roomId });
     socket.disconnect();
+    // Xóa cookie phòng khi user chủ động rời phòng.
+    clearRoomCookie();
     clearChat();
   }, [roomId, clearChat]);
 
@@ -145,6 +168,8 @@ export function useChat(roomId: string) {
     if (!partnerUserId) return;
     const socket = getChatSocket();
     socket.emit('room:block', { roomId, targetUserId: partnerUserId });
+    // Xóa cookie phòng để user có thể tìm người tâm sự mới sau khi block.
+    clearRoomCookie();
     clearChat();
   }, [roomId, partnerUserId, clearChat]);
 

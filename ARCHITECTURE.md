@@ -206,7 +206,66 @@ matchmaking:pending:{userId}   STRING Kết quả match chờ socket
 
 ---
 
-### 4.4 Moderation Pipeline
+### 4.4 Room Access Control (Single Session)
+
+> Mỗi user tại một thời điểm chỉ được ở trong **một phòng chat duy nhất**.
+> Không ai có thể vào phòng người khác bằng cách nhập trực tiếp URL.
+
+**Cơ chế:** Cookie `active-room-id` lưu `roomId` hiện tại, đọc được từ cả client (JavaScript) lẫn server (Next.js middleware).
+
+```
+lib/room-cookie.ts
+  ├── setRoomCookie(roomId)   ← ghi khi room:joined thành công
+  └── clearRoomCookie()       ← xóa khi leave / block / room:closed / access_denied
+```
+
+**3 lớp bảo vệ:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Lớp 1: Next.js Middleware (SSR — nhanh nhất, chặn trước khi   │
+│         trang load)                                            │
+│                                                                │
+│  Có cookie + vào / hoặc /matchmaking    → redirect /chat/{id}  │
+│  Có cookie A + vào /chat/B (A ≠ B)      → redirect /chat/A     │
+│  Không cookie + vào /chat/X             → cho qua (lớp 2 xử lý)│
+├─────────────────────────────────────────────────────────────────┤
+│ Lớp 2: Backend WebSocket (chat.gateway.ts)                     │
+│                                                                │
+│  room:join → isParticipant(userId) = false                     │
+│           → emit room:access_denied                            │
+│  room:join → getRoom() throws (phòng đã đóng/không tồn tại)   │
+│           → emit room:access_denied                            │
+├─────────────────────────────────────────────────────────────────┤
+│ Lớp 3: Frontend useChat.ts (client-side recovery)              │
+│                                                                │
+│  Nhận room:access_denied → clearRoomCookie() → redirect /      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Xử lý stale cookie** (phòng đóng khi user offline):
+```
+User mở lại trình duyệt, cookie active-room-id = 'deadRoom'
+  → Middleware redirect → /chat/deadRoom
+  → useChat: room:join → Backend: phòng đã đóng → room:access_denied
+  → Frontend: clearRoomCookie() + router.replace('/')  ← phá vòng lặp
+  → User vào / bình thường
+```
+
+**Cookie lifecycle:**
+
+| Sự kiện | Hành động |
+|---|---|
+| `room:joined` thành công | `setRoomCookie(roomId)` |
+| User gọi `leaveRoom()` | `clearRoomCookie()` |
+| User gọi `blockPartner()` | `clearRoomCookie()` |
+| Server emit `room:closed` | `clearRoomCookie()` |
+| Server emit `room:access_denied` | `clearRoomCookie()` |
+| Cookie tự hết hạn | Sau 24 giờ (max-age) |
+
+---
+
+### 4.5 Moderation Pipeline
 
 Mỗi tin nhắn text phải qua:
 
@@ -250,11 +309,12 @@ src/
 │   └── common/               ← Navbar, ThemeProvider, LoadingSpinner
 ├── hooks/
 │   ├── useAuth.ts            ← Wrapper đọc authStore
-│   ├── useChat.ts            ← Socket events cho /chat namespace
+│   ├── useChat.ts            ← Socket events + room access guard (room:access_denied)
 │   ├── useMatchmaking.ts     ← Socket events cho /matchmaking namespace
 │   └── use-toast.ts          ← Toast state management
 ├── lib/
 │   ├── api.ts                ← Axios instance: auto-attach JWT, chuẩn hoá lỗi
+│   ├── room-cookie.ts        ← Set/clear cookie active-room-id cho middleware
 │   ├── socket.ts             ← Socket.IO factory (singleton per namespace)
 │   └── utils.ts              ← cn() helper (clsx + tailwind-merge)
 ├── store/
@@ -487,11 +547,14 @@ DELETE /api/blocklist/:targetUserId   (JWT required) → unblock
 | Client → Server | `chat:send` | `{ roomId, type, content?, imageUrl? }` | Gửi tin nhắn |
 | Client → Server | `chat:typing` | `{ roomId, isTyping }` | Typing indicator |
 | Client → Server | `room:leave` | `{ roomId }` | Rời phòng chủ động |
-| Server → Client | `room:joined` | `{ roomId, alias }` | Xác nhận + nhận nickname |
+| Client → Server | `room:block` | `{ roomId, targetUserId }` | Block + đóng phòng |
+| Server → Client | `room:joined` | `{ session, partnerUserId, messages }` | Xác nhận + nhận session + lịch sử |
+| Server → Client | `room:access_denied` | `{ roomId, message }` | Không có quyền vào phòng hoặc phòng đã đóng |
+| Server → Client | `room:closed` | `{ roomId }` | Phòng đã đóng (partner rời/block) |
+| Server → Client | `room:presence` | `{ userId, online }` | Trạng thái online của partner |
 | Server → Client | `chat:message` | `{ id, senderAlias, type, content, imageUrl, createdAt }` | Tin nhắn mới |
-| Server → Client | `chat:typing` | `{ userId, isTyping }` | Partner đang gõ |
-| Server → Client | `chat:partner_left` | — | Đối phương rời phòng |
-| Server → Client | `error` | `{ message }` | Lỗi |
+| Server → Client | `chat:typing` | `{ isTyping }` | Partner đang gõ |
+| Server → Client | `error` | `{ message }` | Lỗi generic |
 
 **Kết nối Socket cần JWT:**
 ```javascript
