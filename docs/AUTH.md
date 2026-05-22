@@ -52,6 +52,12 @@ Verify OTP → isEmailVerified=true → JWT
 Login (chưa verify) → gửi lại OTP + lỗi 400
 ```
 
+### Bypass tạm thời (dev)
+
+- Nhập **`000000`** tại `/verify-email` để bỏ qua OTP (không cần mail).
+- Chỉ hoạt động khi `NODE_ENV !== production` hoặc `ALLOW_OTP_BYPASS=true`.
+- OTP email/SMTP sẽ hoàn thiện ở phase sau.
+
 ---
 
 ## 4. Frontend
