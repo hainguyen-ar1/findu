@@ -35,51 +35,59 @@ export function useChat(roomId: string) {
       socket.emit('room:join', { roomId });
     };
 
-    if (!socket.connected) {
-      socket.connect();
-      socket.once('connect', connectAndJoin);
-    } else {
-      connectAndJoin();
-    }
-
-    socket.on('room:joined', (data: { session: RoomSession; partnerUserId: string | null; messages: ChatMessage[] }) => {
+    const onRoomJoined = (data: { session: RoomSession; partnerUserId: string | null; messages: ChatMessage[] }) => {
       setSession(data.session, data.partnerUserId);
       setMessages(data.messages);
       setError(null);
-    });
+    };
 
-    socket.on('chat:message', (msg: ChatMessage) => {
+    const onMessage = (msg: ChatMessage) => {
       addMessage(msg);
-    });
+    };
 
-    socket.on('chat:typing', ({ isTyping }: { isTyping: boolean }) => {
+    const onTypingEvent = ({ isTyping }: { isTyping: boolean }) => {
       setPartnerTyping(isTyping);
-    });
+    };
 
-    socket.on('room:presence', ({ online }: { userId: string; online: boolean }) => {
+    const onPresence = ({ online }: { userId: string; online: boolean }) => {
       setPartnerOnline(online);
-    });
+    };
 
-    socket.on('room:closed', () => {
+    const onRoomClosed = () => {
       addMessage({
         senderAlias: 'System',
         type: 'system',
         content: 'Phòng đã đóng. Tin nhắn không được lưu.',
       });
-    });
+    };
 
-    socket.on('error', (data: { message?: string }) => {
+    const onSocketError = (data: { message?: string }) => {
       setError(data?.message || 'Có lỗi xảy ra');
-    });
+    };
+
+    // Đăng ký listeners TRƯỚC khi connect/join để tránh miss event do race.
+    socket.on('connect', connectAndJoin);
+    socket.on('room:joined', onRoomJoined);
+    socket.on('chat:message', onMessage);
+    socket.on('chat:typing', onTypingEvent);
+    socket.on('room:presence', onPresence);
+    socket.on('room:closed', onRoomClosed);
+    socket.on('error', onSocketError);
+
+    if (!socket.connected) {
+      socket.connect();
+    } else {
+      connectAndJoin();
+    }
 
     return () => {
-      socket.off('connect');
-      socket.off('room:joined');
-      socket.off('chat:message');
-      socket.off('chat:typing');
-      socket.off('room:presence');
-      socket.off('room:closed');
-      socket.off('error');
+      socket.off('connect', connectAndJoin);
+      socket.off('room:joined', onRoomJoined);
+      socket.off('chat:message', onMessage);
+      socket.off('chat:typing', onTypingEvent);
+      socket.off('room:presence', onPresence);
+      socket.off('room:closed', onRoomClosed);
+      socket.off('error', onSocketError);
     };
   }, [roomId, setSession, setMessages, addMessage, setPartnerTyping, setPartnerOnline, setError]);
 
