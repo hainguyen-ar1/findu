@@ -9,15 +9,16 @@ interface Props {
   onSend: (content: string) => void;
   onSendImage: (file: File) => Promise<void>;
   onTyping: () => void;
+  disabled?: boolean;
 }
 
-export function MessageInput({ onSend, onSendImage, onTyping }: Props) {
+export function MessageInput({ onSend, onSendImage, onTyping, disabled }: Props) {
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
-    if (!text.trim()) return;
+    if (!text.trim() || disabled) return;
     onSend(text.trim());
     setText('');
   };
@@ -50,7 +51,7 @@ export function MessageInput({ onSend, onSendImage, onTyping }: Props) {
           size="icon"
           className="shrink-0"
           onClick={() => fileRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || disabled}
           title="Gửi ảnh"
         >
           {uploading ? (
@@ -74,16 +75,17 @@ export function MessageInput({ onSend, onSendImage, onTyping }: Props) {
             onTyping();
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Nhập tin nhắn..."
+          placeholder={disabled ? 'Cuộc trò chuyện đã kết thúc' : 'Nhập tin nhắn...'}
           className="min-h-[44px] flex-1 rounded-2xl border-border/60 bg-background"
           maxLength={1000}
+          disabled={disabled}
         />
 
         <Button
           type="button"
           size="icon"
           onClick={handleSend}
-          disabled={!text.trim()}
+          disabled={!text.trim() || disabled}
           className="h-11 w-11 shrink-0 rounded-full"
         >
           <Send className="h-4 w-4" />

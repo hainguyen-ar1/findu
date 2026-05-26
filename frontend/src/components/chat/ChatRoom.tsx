@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogOut, Flag, Ban, Shield } from 'lucide-react';
+import { LogOut, Flag, Ban, Shield, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
@@ -30,6 +30,7 @@ export function ChatRoom({ roomId }: Props) {
     partnerAvatar,
     partnerOnline,
     partnerUserId,
+    roomClosed,
     error,
     sendMessage,
     sendImage,
@@ -136,7 +137,23 @@ export function ChatRoom({ roomId }: Props) {
         <div ref={messagesEndRef} />
       </div>
 
-      <MessageInput onSend={sendMessage} onSendImage={sendImage} onTyping={onTyping} />
+      {roomClosed ? (
+        <div className="safe-bottom shrink-0 border-t border-border/60 bg-card/80 p-4 backdrop-blur-md">
+          <p className="mb-3 text-center text-sm text-muted-foreground">
+            Cuộc trò chuyện đã kết thúc
+          </p>
+          <Button
+            className="w-full gap-2 rounded-2xl"
+            size="lg"
+            onClick={() => router.push('/matchmaking')}
+          >
+            <Search className="h-4 w-4" />
+            Tìm người mới
+          </Button>
+        </div>
+      ) : (
+        <MessageInput onSend={sendMessage} onSendImage={sendImage} onTyping={onTyping} />
+      )}
 
       {partnerUserId && (
         <ReportDialog

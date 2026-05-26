@@ -15,12 +15,14 @@ export function useChat(roomId: string) {
     partnerUserId,
     isPartnerTyping,
     partnerOnline,
+    roomClosed,
     error,
     setSession,
     setMessages,
     addMessage,
     setPartnerTyping,
     setPartnerOnline,
+    setRoomClosed,
     setError,
     clearChat,
   } = useChatStore();
@@ -41,8 +43,8 @@ export function useChat(roomId: string) {
     const onRoomJoined = (data: { session: RoomSession; partnerUserId: string | null; messages: ChatMessage[] }) => {
       setSession(data.session, data.partnerUserId);
       setMessages(data.messages);
+      setRoomClosed(false);
       setError(null);
-      // Lưu roomId vào cookie để middleware có thể redirect user về phòng cũ.
       setRoomCookie(roomId);
     };
 
@@ -60,6 +62,7 @@ export function useChat(roomId: string) {
 
     const onRoomClosed = () => {
       clearRoomCookie();
+      setRoomClosed(true);
     };
 
     const onSocketError = (data: { message?: string }) => {
@@ -104,7 +107,7 @@ export function useChat(roomId: string) {
       socket.off('room:closed', onRoomClosed);
       socket.off('error', onSocketError);
     };
-  }, [roomId, router, setSession, setMessages, addMessage, setPartnerTyping, setPartnerOnline, setError]);
+  }, [roomId, router, setSession, setMessages, addMessage, setPartnerTyping, setPartnerOnline, setRoomClosed, setError]);
 
   const emitTyping = useCallback(
     (isTyping: boolean) => {
@@ -185,6 +188,7 @@ export function useChat(roomId: string) {
     partnerUserId,
     isPartnerTyping,
     partnerOnline,
+    roomClosed,
     error,
     myAlias: session?.myAlias ?? null,
     partnerAlias: session?.partnerAlias ?? null,
