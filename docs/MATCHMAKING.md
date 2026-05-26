@@ -341,3 +341,5 @@ Sau matchmaking, user vào **Phase 5 — Room & Chat**:
 - Xóa messages khi rời phòng
 
 Xem thêm: [ARCHITECTURE.md](../ARCHITECTURE.md) §4.3
+http://localhost:3001/chat/3bde12cb-5e59-4c22-9e6f-a84b41685a9b
+3bde12cb-5e59-4c22-9e6f-a84b41685a9b

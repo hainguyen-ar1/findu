@@ -157,9 +157,15 @@ export function useChat(roomId: string) {
 
   const leaveRoom = useCallback(() => {
     const socket = getChatSocket();
+    // Chờ server xác nhận đóng phòng trước khi disconnect, timeout 3s phòng trường hợp mất kết nối.
+    const timeout = setTimeout(() => {
+      socket.disconnect();
+    }, 3000);
+    socket.once('room:closed', () => {
+      clearTimeout(timeout);
+      socket.disconnect();
+    });
     socket.emit('room:leave', { roomId });
-    socket.disconnect();
-    // Xóa cookie phòng khi user chủ động rời phòng.
     clearRoomCookie();
     clearChat();
   }, [roomId, clearChat]);
@@ -167,8 +173,14 @@ export function useChat(roomId: string) {
   const blockPartner = useCallback(() => {
     if (!partnerUserId) return;
     const socket = getChatSocket();
+    const timeout = setTimeout(() => {
+      socket.disconnect();
+    }, 3000);
+    socket.once('room:closed', () => {
+      clearTimeout(timeout);
+      socket.disconnect();
+    });
     socket.emit('room:block', { roomId, targetUserId: partnerUserId });
-    // Xóa cookie phòng để user có thể tìm người tâm sự mới sau khi block.
     clearRoomCookie();
     clearChat();
   }, [roomId, partnerUserId, clearChat]);

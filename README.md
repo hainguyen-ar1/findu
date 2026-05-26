@@ -30,6 +30,7 @@ findu/
 | [docs/USER_PROFILE.md](docs/USER_PROFILE.md) | User & Profile CRUD, upload avatar |
 | [docs/MATCHMAKING.md](docs/MATCHMAKING.md) | Redis Queue, FIFO, WebSocket, race condition |
 | [docs/CHAT.md](docs/CHAT.md) | Room ẩn danh, chat realtime, moderation, report/block |
+| [docs/ERROR_RESPONSE.md](docs/ERROR_RESPONSE.md) | Luồng lỗi, ApiErrorResponseDto, ApiCode enum |
 | [.cursor/rules/PROJECT_RULES.mdc](.cursor/rules/PROJECT_RULES.mdc) | Quy tắc dự án (Cursor) |
 
 ## Khởi động nhanh

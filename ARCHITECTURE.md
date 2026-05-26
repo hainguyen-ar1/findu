@@ -656,11 +656,12 @@ Hoặc dùng **VS Code Run & Debug** (Cmd+Shift+D) → chọn **Full Stack: Back
 ## 13. Tài liệu theo module
 
 | Tài liệu | Nội dung |
-|----------|----------|
+|----------|-----------|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Tổng quan kiến trúc (file này) |
 | [docs/AUTH.md](docs/AUTH.md) | Authentication, OTP, OAuth, JWT |
 | [docs/USER_PROFILE.md](docs/USER_PROFILE.md) | User & Profile API |
 | [docs/MATCHMAKING.md](docs/MATCHMAKING.md) | Redis Queue, ghép đôi, WebSocket |
+| [docs/ERROR_RESPONSE.md](docs/ERROR_RESPONSE.md) | Luồng lỗi, ApiErrorResponseDto, ApiCode enum |
 
 ---
 
