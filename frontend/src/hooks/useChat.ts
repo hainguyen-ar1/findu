@@ -59,13 +59,7 @@ export function useChat(roomId: string) {
     };
 
     const onRoomClosed = () => {
-      // Xóa cookie phòng khi phòng bị đóng từ phía server.
       clearRoomCookie();
-      addMessage({
-        senderAlias: 'System',
-        type: 'system',
-        content: 'Phòng đã đóng. Tin nhắn không được lưu.',
-      });
     };
 
     const onSocketError = (data: { message?: string }) => {
