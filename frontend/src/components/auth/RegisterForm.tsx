@@ -11,10 +11,17 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/store/authStore';
 import { useToast } from '@/hooks/use-toast';
 
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Nam' },
+  { value: 'female', label: 'Nữ' },
+  { value: 'other', label: 'Khác' },
+] as const;
+
 const schema = z
   .object({
     displayName: z.string().min(2, 'Tên ít nhất 2 ký tự').max(30),
     email: z.string().email('Email không hợp lệ'),
+    gender: z.enum(['male', 'female', 'other'], { required_error: 'Vui lòng chọn giới tính' }),
     password: z.string().min(6, 'Mật khẩu ít nhất 6 ký tự'),
     confirmPassword: z.string(),
   })
@@ -38,7 +45,7 @@ export function RegisterForm() {
 
   const onSubmit = async (data: FormData) => {
     try {
-      await registerUser(data.email, data.password, data.displayName);
+      await registerUser(data.email, data.password, data.displayName, data.gender);
       toast({
         title: 'Đăng ký thành công!',
         description: 'Kiểm tra email để lấy mã OTP xác thực.',
@@ -60,6 +67,29 @@ export function RegisterForm() {
         <Input id="displayName" placeholder="Tên của bạn" {...register('displayName')} />
         {errors.displayName && (
           <p className="text-xs text-destructive">{errors.displayName.message}</p>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Giới tính</Label>
+        <div className="flex gap-2">
+          {GENDER_OPTIONS.map((opt) => (
+            <label
+              key={opt.value}
+              className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-border px-3 py-2.5 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/10"
+            >
+              <input
+                type="radio"
+                value={opt.value}
+                {...register('gender')}
+                className="sr-only"
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+        {errors.gender && (
+          <p className="text-xs text-destructive">{errors.gender.message}</p>
         )}
       </div>
 

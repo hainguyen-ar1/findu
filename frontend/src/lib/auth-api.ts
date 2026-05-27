@@ -2,7 +2,7 @@ import { apiClient } from '@/lib/api';
 import type { AuthResponse } from '@/types/api.types';
 
 export const authApi = {
-  register: (data: { email: string; password: string; displayName: string }) =>
+  register: (data: { email: string; password: string; displayName: string; gender: string }) =>
     apiClient.post<any, AuthResponse>('/auth/register', data),
 
   login: (data: { email: string; password: string }) =>

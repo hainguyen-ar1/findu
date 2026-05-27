@@ -12,7 +12,7 @@ interface AuthState {
   pendingEmail: string | null;
 
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
+  register: (email: string, password: string, displayName: string, gender: string) => Promise<void>;
   verifyEmail: (email: string, otp: string) => Promise<void>;
   resendOtp: (email: string) => Promise<void>;
   logout: () => void;
@@ -28,9 +28,8 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       pendingEmail: null,
 
-      register: async (email, password, displayName) => {
-        await authApi.register({ email, password, displayName });
-        // Sau register, chuyển sang trang verify-email
+      register: async (email, password, displayName, gender) => {
+        await authApi.register({ email, password, displayName, gender });
         set({ pendingEmail: email });
       },
 
