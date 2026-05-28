@@ -1,0 +1,150 @@
+1. Kiến trúc — Tốt nhưng có điểm chết
+Điểm mạnh:
+
+NestJS modular theo đúng DDD: controller → service → repository → schema
+Hybrid HTTP + WebSocket cho matchmaking (mobile reconnect) — thiết kế thực tế
+Redis atomic matchmaking (ZSET + MULTI) xử lý race condition tốt
+Privacy đúng triết lý: deleteRoomMessages khi đóng phòng
+Vấn đề:
+
+URI Versioning bật ở main.ts dòng 54 nhưng không controller nào dùng @Version() — feature chết
+MainGateway ở namespace mặc định nhưng frontend chỉ connect /chat và /matchmaking — gateway này không được dùng thực tế
+LocalStrategy định nghĩa nhưng không có route nào gắn vào — login đi thẳng AuthService
+----------------
+2. Bảo mật — Cần xử lý ngay
+Mức	Vấn đề	File
+🔴 Cao
+Google Client Secret thật bị commit vào backend/.env.example
+.env.example dòng 31–33
+🔴 Cao
+OAuth callback redirect token qua URL (?accessToken=...&refreshToken=...)
+auth.controller.ts 132, 152
+🔴 Cao
+OTP bypass 000000 khi ALLOW_OTP_BYPASS=true (default trong .env.example)
+auth.service.ts 25–106
+🔴 Cao
+WS CORS origin: true ở production
+socket-io.adapter.ts 17–19
+🟡 Trung
+OTP dùng Math.random() — không cryptographically secure
+auth.service.ts 244
+🟡 Trung
+Cookie auth không HttpOnly, không Secure
+auth-cookie.ts dòng 7
+🟡 Trung
+JWT trong localStorage → dễ bị XSS lấy cắp
+api.ts dòng 14
+🟡 Trung
+Refresh token không rotate, không revoke/blacklist
+auth.service.ts 210–223
+🟡 Trung
+JwtStrategy không kiểm isBanned — user bị ban vẫn dùng JWT cũ còn hạn
+jwt.strategy.ts 19–23
+🟢 Thấp
+Moderation substring đơn giản — "cc" trong từ thông thường cũng bị chặn
+moderation.service.ts 54–58
+
+3. Scalability — Không scale ngang được hiện tại
+In-memory state:
+├── chat.gateway.ts: socketMeta, roomPresence (dòng 37–39)
+├── matchmaking.gateway.ts: positionTimers (dòng 29)
+└── moderation.service.ts: spamTracker (dòng 36)
+3 Map này sẽ lệch nhau nếu chạy 2+ instance backend → người dùng A connect instance 1, người dùng B connect instance 2 sẽ không thấy nhau.
+
+Cần làm trước khi scale:
+
+Cài @socket.io/redis-adapter — 1 dòng config nhưng ảnh hưởng lớn
+Chuyển spamTracker sang Redis (SETEX)
+positionTimers cần tập trung hóa hoặc dùng Redis pub/sub
+Matchmaking O(N) mỗi 3 giây:
+
+
+matchmaking.service.ts
+Lines 149-180
+// Mỗi user trong queue poll 3s → tryAtomicMatch → ZRANGE 0 -1 (toàn bộ queue)
+const candidateIds = await this.redis.zrange(QUEUE_ZSET, 0, -1);
+Khi có 100 user trong queue = 100 người × mỗi 3s × quét toàn bộ 100 user = 3.300 lần đọc Redis/giây. Ổn ở hiện tại nhưng cần refactor khi scale.
+
+4. Error Handling — REST tốt, WebSocket yếu
+REST (tốt): Envelope chuẩn { success, data } / { success: false, code, message } + requestId xuyên suốt.
+
+WebSocket (thiếu nhất quán):
+
+// hiện tại — không có ApiCode, không requestId
+client.emit('error', { message: 'Chưa xác thực' });
+// nên là
+client.emit('error', { code: ApiCode.UNAUTHORIZED, message: '...', requestId: '...' });
+Một số catch trong chat.gateway.ts dòng 136–139 nuốt lỗi không emit về client.
+
+5. Code Quality — Điểm cụ thể cần refactor
+Duplicate JWT auth 3 gateway:
+
+// Lặp y hệt ở: gateway.gateway.ts, matchmaking.gateway.ts, chat.gateway.ts
+const token = client.handshake.auth?.token || ...;
+const payload = this.jwtService.verify(token, { secret: ... });
+(client as any).userId = payload.sub;
+→ Nên tách thành WsJwtMiddleware hoặc WsAuthGuard dùng chung.
+
+CustomThrottlerGuard dead code:
+
+
+throttle.guard.ts
+Lines 6-8
+export class CustomThrottlerGuard extends ThrottlerGuard {
+  // ... override getTracker
+}
+Guard này không bao giờ được đăng ký vào DI — auth.module.ts dùng ThrottlerGuard mặc định, không phải CustomThrottlerGuard.
+
+process.env trực tiếp thay ConfigService:
+
+
+auth.controller.ts
+Lines 131-131
+const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+Không nhất quán với cách cả project dùng ConfigService.
+
+docker-compose.yml thiếu biến quan trọng:
+
+environment:
+  - REDIS_URL=${REDIS_URL}       # ← compose set REDIS_URL
+Nhưng matchmaking.service.ts dòng 41–43 lại đọc:
+
+host: this.config.get('REDIS_HOST', 'localhost'),
+port: this.config.get('REDIS_PORT', 6379),
+→ Hai cách connect Redis không khớp nhau — trong Docker sẽ connect sai host.
+
+6. Test Coverage — Không có gì cả
+0 file *.spec.ts trong toàn repo
+backend/test/ trống
+Jest đã cấu hình nhưng không có test nào. Đây là rủi ro lớn nhất khi refactor hoặc thêm tính năng.
+
+7. Quy chuẩn nên theo
+Lĩnh vực	Quy chuẩn
+API design
+Đã đúng hướng RFC 9457 error format; thêm errors[] chi tiết
+Auth
+OWASP ASVS Level 2: httpOnly cookie, PKCE OAuth, refresh rotation
+WebSocket
+Socket.IO Scaling Guide: Redis adapter + sticky session
+Secret management
+Không bao giờ commit secret vào .env.example; dùng placeholder
+Testing
+Testing Trophy: nhiều integration test, ít unit, e2e auth + WS
+Logging
+Pino structured JSON, requestId cả WS, không log PII
+Security headers
+Helmet đã có; thêm CSP cho upload URLs
+Container
+Docker best practices: non-root user, healthcheck, prod compose tách riêng
+8. Thứ tự ưu tiên cải thiện
+Phải làm trước production:
+
+Rotate Google Secret bị lộ trong .env.example, thay bằng placeholder
+Tắt ALLOW_OTP_BYPASS + dùng crypto.randomInt cho OTP
+Đổi OAuth callback sang httpOnly cookie thay token trên URL
+Thắt WS CORS production giống HTTP CORS
+Sync REDIS_HOST/PORT giữa compose và code
+Nên làm sớm: 6. WsAuthGuard dùng chung 3 gateway 7. Đăng ký CustomThrottlerGuard hoặc xóa 8. Refresh token store + rotation 9. Test tối thiểu: matchmaking atomic, OTP flow, chat auth 10. Health check endpoint /health
+
+Scale khi cần: 11. @socket.io/redis-adapter 12. Chuyển spam tracker → Redis 13. Matchmaking scan theo bucket preference, không O(N)
+

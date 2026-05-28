@@ -3,7 +3,17 @@ import { io, Socket } from 'socket.io-client';
 let chatSocket: Socket | null = null;
 let matchmakingSocket: Socket | null = null;
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000';
+/** Browser: same-origin qua Next rewrite (tránh CORS/ngrok). SSR: trỏ thẳng backend. */
+function getSocketBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return (
+    process.env.NEXT_PUBLIC_BACKEND_URL ||
+    process.env.NEXT_PUBLIC_SOCKET_URL ||
+    'http://localhost:3000'
+  );
+}
 
 function getToken(): string {
   return typeof window !== 'undefined' ? localStorage.getItem('accessToken') || '' : '';
@@ -11,7 +21,7 @@ function getToken(): string {
 
 export function getChatSocket(): Socket {
   if (!chatSocket) {
-    chatSocket = io(`${SOCKET_URL}/chat`, {
+    chatSocket = io(`${getSocketBaseUrl()}/chat`, {
       auth: { token: getToken() },
       autoConnect: false,
     });
@@ -23,7 +33,7 @@ export function getChatSocket(): Socket {
 
 export function getMatchmakingSocket(): Socket {
   if (!matchmakingSocket) {
-    matchmakingSocket = io(`${SOCKET_URL}/matchmaking`, {
+    matchmakingSocket = io(`${getSocketBaseUrl()}/matchmaking`, {
       auth: { token: getToken() },
       autoConnect: false,
     });

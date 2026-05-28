@@ -29,7 +29,9 @@
 | POST | `/api/auth/resend-otp` | ✅ | Gửi lại OTP |
 | POST | `/api/auth/refresh` | ✅ | Làm mới token |
 | GET | `/api/auth/me` | ❌ | User hiện tại |
-| GET | `/api/auth/google` | ✅ | OAuth redirect |
+| POST | `/api/auth/google` | ✅ | Đăng nhập Google (mobile) — body `{ idToken }` |
+| GET | `/api/auth/google` | ✅ | OAuth redirect (web) |
+| GET | `/api/auth/google/callback` | ✅ | OAuth callback (web) |
 | GET | `/api/auth/facebook` | ✅ | OAuth redirect |
 
 ### Rate limits (mỗi phút / IP)
@@ -92,5 +94,22 @@ MAIL_HOST=...
 MAIL_USER=...
 MAIL_PASS=...
 GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_CALLBACK_URL=https://998b-222-252-97-1.ngrok-free.app/api/auth/google/callback
+# GOOGLE_CLIENT_IDS=... (Android/iOS client IDs, nếu có)
 FACEBOOK_APP_ID=...
+```
+
+### Google Sign-In (mobile)
+
+1. App dùng Google Sign-In SDK → nhận `idToken`.
+2. `POST /api/auth/google` với body:
+
+```json
+{ "idToken": "<google-id-token>" }
+```
+
+3. Response giống `POST /api/auth/login` (accessToken, refreshToken, user).
+
+**Lưu ý:** `aud` trong idToken phải khớp một trong `GOOGLE_CLIENT_ID` hoặc `GOOGLE_CLIENT_IDS`. Tạo OAuth client riêng cho Android/iOS trên Google Cloud Console nếu cần.
 ```

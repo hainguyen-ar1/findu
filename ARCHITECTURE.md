@@ -567,7 +567,7 @@ const socket = io("http://localhost:3000/chat", {
 
 ## 10. Environment Variables
 
-### Backend (`backend/.env`)
+### Backend (`backend/.env.development.local`)
 
 ```bash
 NODE_ENV=development
@@ -581,13 +581,13 @@ JWT_REFRESH_SECRET=...      # ký refreshToken
 JWT_REFRESH_EXPIRES_IN=30d
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
-GOOGLE_CALLBACK_URL=http://localhost:3000/api/auth/google/callback
+GOOGLE_CALLBACK_URL=https://998b-222-252-97-1.ngrok-free.app/api/auth/google/callback
 FACEBOOK_APP_ID=...
 FACEBOOK_APP_SECRET=...
 FRONTEND_URL=http://localhost:3001
 ```
 
-### Frontend (`frontend/.env.local`)
+### Frontend (`frontend/.env.development.local`)
 
 ```bash
 NEXT_PUBLIC_API_URL=http://localhost:3000/api
@@ -611,9 +611,9 @@ cd backend  && npm install
 cd ../frontend && npm install
 
 # 2. Cấu hình env
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
-# Chỉnh sửa các giá trị trong .env
+# Chỉnh sửa các giá trị trong:
+# - backend/.env.development.local
+# - frontend/.env.development.local
 
 # 3. Khởi động services
 brew services start mongodb-community

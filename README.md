@@ -44,9 +44,8 @@ findu/
 ### Dev mode
 
 ```bash
-# Copy env
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env.local
+# Env (đã dùng file development local)
+# backend/.env.development.local và frontend/.env.development.local
 
 # Services
 brew services start mongodb-community
